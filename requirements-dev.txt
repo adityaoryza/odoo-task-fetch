@@ -1,0 +1,2 @@
+# Only to work on odoo-task-fetch itself (make lint). Install with: pip install -r requirements-dev.txt
+ruff>=0.6

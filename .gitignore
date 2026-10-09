@@ -1,0 +1,17 @@
+# built by scripts/release.sh
+dist/
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+.venv/
+.ruff_cache/
+
+# local settings, editors and anything a fetch writes
+.env
+*.local.conf
+.idea/
+.vscode/
+odoo-tasks/
