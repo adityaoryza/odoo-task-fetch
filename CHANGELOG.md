@@ -5,7 +5,17 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-23
+
 ### Added
+- The add-on of [git-shuttle](https://github.com/adityaoryza/git-shuttle) (`git-shuttle-odoo-task`, installed next to `odoo-task`, protocol 1):
+  `git shuttle start --task 4821` makes the branch from the title of the task (`[Sales]` tags removed) and the branch remembers the task;
+  `git shuttle pr` fills the title and the description (in the style `## Description`, `## Commits & Changes`, `## Verification`); the web UI
+  shows a card of the task. It reads the folders that `odoo-task fetch` writes (the folder of your connection, or
+  `git config shuttle.odoo-task.dir`), fetches a missing task with `odoo-task fetch` (read-only), and never writes to Odoo. It does nothing
+  until you run `git shuttle addon enable odoo-task`.
+- The add-on lists your open tasks (`tasks` hook) and has a `setup` hook: the connection (URL, database, login, folder) and the API key can be
+  set from the web UI of git-shuttle. The key is tested first, saved in a file of mode 600 and never shown back.
 - `odoo-task tasks`: the open tasks assigned to you (`--all`, `--limit`, `--ids` for scripts).
 - `fetch` takes several tasks at once; a task that fails does not stop the others and the exit code says so.
 - `fetch --copy`: the prompt on the clipboard (`clip.exe` on WSL, `pbcopy`, `wl-copy`, `xclip`, `xsel`).
