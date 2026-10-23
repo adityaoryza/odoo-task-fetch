@@ -5,6 +5,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-23
+
+### Fixed
+- The add-on: a task whose title has quotes, a question mark or a dollar sign (`Copy "Export" to Accounting`) no longer makes git-shuttle refuse
+  the proposed branch name; what is not simple text is dropped from it.
+
 ## [0.2.0] - 2026-10-23
 
 ### Added
