@@ -109,6 +109,12 @@ link_command() {
     mkdir -p "$dir"
     ln -sfn "$target" "$dir/odoo-task"
     say "installed: $dir/odoo-task -> $target"
+    # the add-on of git-shuttle: a program on the PATH that does nothing until you run  git shuttle addon enable odoo-task
+    local addon; addon="$(dirname "$target")/git-shuttle-odoo-task"
+    if [[ -x "$addon" ]]; then
+        ln -sfn "$addon" "$dir/git-shuttle-odoo-task"
+        say "installed: $dir/git-shuttle-odoo-task (the add-on of git-shuttle; enable it with: git shuttle addon enable odoo-task)"
+    fi
     if in_path "$dir"; then say "$dir is already in your PATH: it works in this terminal."; return 0; fi
     local rc
     while IFS= read -r rc; do add_path_block "$rc" "$dir"; done < <(rc_files | sort -u)
@@ -234,6 +240,7 @@ do_uninstall() {
     local dir
     for dir in "${PREFIX:+$PREFIX/bin}" "$HOME/.local/bin" "$HOME/bin"; do
         [[ -n "$dir" && -L "$dir/odoo-task" ]] && { rm -f "$dir/odoo-task"; say "removed: $dir/odoo-task"; }
+        [[ -n "$dir" && -L "$dir/git-shuttle-odoo-task" ]] && { rm -f "$dir/git-shuttle-odoo-task"; say "removed: $dir/git-shuttle-odoo-task"; }
     done
     local rc
     while IFS= read -r rc; do remove_path_block "$rc"; done < <(rc_files | sort -u)

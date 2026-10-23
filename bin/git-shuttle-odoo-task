@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The add-on of git-shuttle for odoo-task (git shuttle addon enable odoo-task). Same entry as bin/odoo-task, another module.
+set -euo pipefail
+ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+command -v python3 >/dev/null 2>&1 || { echo "git-shuttle-odoo-task: python3 is required (3.9 or later)" >&2; exit 1; }
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
+    || { echo "git-shuttle-odoo-task: Python 3.9 or later is required" >&2; exit 1; }
+export ODOO_TASK_ROOT="$ROOT"
+PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m odoo_task.shuttle "$@"
