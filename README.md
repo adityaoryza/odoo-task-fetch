@@ -38,7 +38,8 @@ OK    #4821 Export fails on large invoices
 ## Features
 
 - **Read-only, by construction.** The client accepts only read methods; anything else is refused before it is sent. Tests
-  prove that a fetch sends nothing but reads.
+  prove that a fetch sends nothing but reads. The one exception is opt-in and belongs to the git-shuttle add-on (see below): adding the
+  pull request to the Customer report of a task.
 - **Paste what you have.** A task number, `#4821`, or the URL from your browser; several at once.
 - **Pick from your own tasks.** `odoo-task tasks` lists the open tasks assigned to you; the menu lets you choose one or more.
 - **Hand it to an assistant.** `--prompt` writes a ready-to-paste prompt, `--copy` puts it on the clipboard.
@@ -270,8 +271,12 @@ The web UI of git-shuttle shows a card of the task on the Start and Ship tabs, l
 a **Set up** form (Add-ons dialog) for the connection: URL, database, login, folder and the API key. The key is typed in a hidden field,
 tested against Odoo, and only then saved in `~/.config/odoo-task/secrets/NAME` (mode 600, like `odoo-task login`); it is never shown back.
 
-- **Read-only, like the rest.** It reads the folders that `odoo-task fetch` writes; when `start --task` names a task that is not
-  there yet, it runs `odoo-task fetch` (which only reads Odoo, with your saved key or `ODOO_TASK_API_KEY`). It never writes to Odoo.
+- **Read-only, except one thing you turn on.** It reads the folders that `odoo-task fetch` writes; when `start --task` names a task that is
+  not there yet, it runs `odoo-task fetch` (which only reads Odoo, with your saved key or `ODOO_TASK_API_KEY`). It writes to Odoo only for the
+  **Customer report**, and only when you turn it on for a repository (`git shuttle addon report odoo-task on`): after `git shuttle pr` it shows
+  the pull request and the commits it would add, asks, and then **adds** them after the text that is in the field (never removing or changing
+  it; one entry for each pull request; if Odoo changed the old text, the old value is put back). Only a custom field (`x_...`) of text or html
+  type of one task is written: `x_customer_report`, or `git config shuttle.odoo-task.report-field x_other`.
 - **Where the tasks are:** the folder of your connection (`odoo-task profiles --show`). To use another for one repository:
   `git config shuttle.odoo-task.dir ~/path`, and `git config shuttle.odoo-task.profile NAME` for another connection.
 - **After an `odoo-task update`** the program is not the one that was enabled: run `git shuttle addon enable odoo-task` again (it shows

@@ -144,6 +144,28 @@ class OdooClient:
         except (OSError, xmlrpc.client.Error) as exc:
             raise OdooError(f"Cannot reach {self.url}: {exc}") from None
 
+    def append_custom_field(self, model: str, record_id: int, field: str, value: str) -> None:
+        """The one write that odoo-task can make, for git-shuttle: one custom field (x_...) of one task.
+
+        `execute` stays read-only. The caller has read the old value and keeps it: it only ever adds to what is there.
+        """
+        if (
+            model != "project.task"
+            or not re.fullmatch(r"x_[a-z0-9_]{1,60}", field or "")
+            or not isinstance(record_id, int)
+        ):
+            raise OdooError("Refused: only a custom field (x_...) of a task can be written.")
+        if self.uid is None or self._models is None:
+            self.connect()
+        assert self._models is not None
+        try:
+            self._models.execute_kw(self.db, self.uid, self._secret, model, "write", [[record_id], {field: value}])
+        except xmlrpc.client.Fault as exc:
+            first_line = str(exc.faultString).strip().splitlines()[-1] if exc.faultString else "error"
+            raise OdooError(f"Odoo refused to write {field}: {first_line}") from None
+        except (OSError, xmlrpc.client.Error) as exc:
+            raise OdooError(f"Cannot reach {self.url}: {exc}") from None
+
     # Convenience wrappers ------------------------------------------------------------------------------------------
 
     def read(self, model: str, ids: list[int], fields: list[str] | None = None) -> list[dict[str, Any]]:

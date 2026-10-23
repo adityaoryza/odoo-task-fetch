@@ -40,7 +40,7 @@ def manifest() -> dict:
             "Starts a branch from an Odoo task and fills the pull request from it "
             "(reads the folders that odoo-task fetch writes)"
         ),
-        "hooks": ["start", "pr", "status", "tasks", "setup"],
+        "hooks": ["start", "pr", "status", "tasks", "setup", "report"],
         "flags": {"start": ["--task"]},
         # only to fetch a task that is not there yet, when the key is not saved by odoo-task itself
         "env": [store.ENV_SECRET],
@@ -259,7 +259,9 @@ def hook_pr(ctx: dict) -> dict:
     if task_id is None:
         return {}
     folder, task = load(ctx, task_id, fetch=False)
-    first = next((p.strip() for p in re.split(r"\n\s*\n", task["description"]) if p.strip()), "")
+    # an image of the task is a file on this machine (img_att_1.png): it shows nothing in a pull request
+    text = re.sub(r"!\[[^\]]*\]\((?!https?://)[^)]*\)", "", task["description"])
+    first = next((p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()), "")
     intro = clean(first, 600, single_line=False) or task["title"]
     link = reference_of(task_id, task).get("link")
     lines = ["## Description", intro, ""]
@@ -420,7 +422,64 @@ def _setup_save(name: str, profile: store.Profile | None, values: dict) -> dict:
     return {"ok": True, "message": f"The profile '{name}' is saved; it has no key yet: add the API key to use it."}
 
 
-HOOKS = {"start": hook_start, "pr": hook_pr, "status": hook_status, "tasks": hook_tasks, "setup": hook_setup}
+def hook_report(ctx: dict) -> dict:
+    """The pull request and the commits, added to the Customer report of the task (only added: what is there is kept).
+
+    `action: preview` reads Odoo and says what would be added; `action: post` adds it. git-shuttle calls it
+    only when the user turned it on for the repository, and shows the preview first. The field is git config
+    shuttle.odoo-task.report-field (default x_customer_report).
+    """
+    from . import report
+    from .cli import connect, resolve_profile
+    from .client import OdooError
+
+    try:
+        task_id = int(str(ctx.get("ref_id", "")))
+    except ValueError:
+        raise Problem("no task number to write to") from None
+    field = _git_config(ctx.get("repo", {}).get("root"), "shuttle.odoo-task.report-field") or report.DEFAULT_FIELD
+    info = {"branch": ctx.get("branch", ""), "pr": ctx.get("pr") or {}, "commits": ctx.get("commits") or []}
+    try:
+        client = connect(resolve_profile(profile_name(ctx)))
+        if ctx.get("action") == "post":
+            message = report.post(client, task_id, field, info)
+            return {
+                "ok": True,
+                "message": clean(message, 300),
+                "text": "",
+                "field": field,
+                "skipped": "Nothing was written" in message,
+            }
+        done = report.plan(client, task_id, field, info)
+    except (OdooError, PermissionError, ValueError, FileNotFoundError) as error:
+        return {"ok": False, "message": clean(str(error), 300), "text": "", "field": field, "skipped": False}
+    where = (
+        "already has this pull request: nothing will be added"
+        if done["skip"]
+        else "has text: the entry is added after it, the text is kept"
+    )
+    note = (
+        f"{field} ({done['kind']}) {where}"
+        if done["old"]
+        else f"{field} ({done['kind']}) is empty: the entry is the first text"
+    )
+    return {
+        "ok": True,
+        "message": clean(note, 300),
+        "text": report.entry_text(info)[:6000],
+        "field": field,
+        "skipped": done["skip"],
+    }
+
+
+HOOKS = {
+    "start": hook_start,
+    "pr": hook_pr,
+    "status": hook_status,
+    "tasks": hook_tasks,
+    "setup": hook_setup,
+    "report": hook_report,
+}
 
 
 def main(argv: list[str]) -> int:
