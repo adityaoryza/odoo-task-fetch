@@ -69,6 +69,10 @@ class ReleaseCycle(unittest.TestCase):
         self.assertIn("checksum OK", out.stderr)
         self.assertEqual(sh([str(self.cmd), "--version"], self.env).stdout.strip(), f"odoo-task {current}")
         self.assertIn(">>> odoo-task >>>", (self.home / ".bashrc").read_text())
+        # The add-on of git-shuttle is linked next to the command (inert until `git shuttle addon enable odoo-task`).
+        addon = self.cmd.parent / "git-shuttle-odoo-task"
+        self.assertTrue(addon.is_symlink(), "the add-on is linked with the command")
+        self.assertIn('"name": "odoo-task"', sh([str(addon), "--shuttle-manifest"], self.env).stdout)
 
         # Installing again changes nothing.
         again = sh(["bash", str(ROOT / "scripts" / "install.sh"), "remote"], self.env)
@@ -87,6 +91,8 @@ class ReleaseCycle(unittest.TestCase):
         done = sh([str(self.cmd), "update"], self.env)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(sh([str(self.cmd), "--version"], self.env).stdout.strip(), "odoo-task 9.9.9")
+        manifest = sh([str(addon), "--shuttle-manifest"], self.env).stdout
+        self.assertIn('"version": "9.9.9"', manifest, "the add-on follows the update")
         self.assertTrue((self.tmp / "share" / f"v{current}").is_dir())  # the previous release is kept
 
         # A tampered archive is refused and the installation is left alone.
@@ -107,6 +113,7 @@ class ReleaseCycle(unittest.TestCase):
         gone = sh(["bash", str(ROOT / "scripts" / "install.sh"), "uninstall"], self.env)
         self.assertEqual(gone.returncode, 0, gone.stderr)
         self.assertFalse(self.cmd.exists() or self.cmd.is_symlink())
+        self.assertFalse(addon.exists() or addon.is_symlink(), "the add-on is removed with the command")
         self.assertNotIn("odoo-task", (self.home / ".bashrc").read_text())
 
     def test_the_command_runs_from_a_checkout(self):

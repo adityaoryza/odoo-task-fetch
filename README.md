@@ -253,6 +253,31 @@ extra fields, closed stages and your preferences. **The key is never written to 
 Use an API key with the least rights you need and revoke it when you are done. Use `https://` outside your own machine.
 See [SECURITY.md](SECURITY.md).
 
+## With git-shuttle (add-on)
+
+[git-shuttle](https://github.com/adityaoryza/git-shuttle) can use the tasks that `odoo-task` fetches: the installer links
+`git-shuttle-odoo-task` next to the `odoo-task` command, and git-shuttle runs it as an *add-on* (its protocol is in
+[docs/addons.md](https://github.com/adityaoryza/git-shuttle/blob/main/docs/addons.md)). It does nothing until you enable it in a repository:
+
+```bash
+git shuttle addon enable odoo-task      # shows what it asks for, and pins the program
+git shuttle start --task 4821           # a branch from the title of the task, without its [Tags]; the branch remembers the task
+git shuttle pr                          # the title and the description of the pull request, from the task and the commits
+git shuttle odoo-task fetch 4821        # anything else is odoo-task itself
+```
+
+The web UI of git-shuttle shows a card of the task on the Start and Ship tabs, lists your open tasks to pick from in the Start tab, and has
+a **Set up** form (Add-ons dialog) for the connection: URL, database, login, folder and the API key. The key is typed in a hidden field,
+tested against Odoo, and only then saved in `~/.config/odoo-task/secrets/NAME` (mode 600, like `odoo-task login`); it is never shown back.
+
+- **Read-only, like the rest.** It reads the folders that `odoo-task fetch` writes; when `start --task` names a task that is not
+  there yet, it runs `odoo-task fetch` (which only reads Odoo, with your saved key or `ODOO_TASK_API_KEY`). It never writes to Odoo.
+- **Where the tasks are:** the folder of your connection (`odoo-task profiles --show`). To use another for one repository:
+  `git config shuttle.odoo-task.dir ~/path`, and `git config shuttle.odoo-task.profile NAME` for another connection.
+- **After an `odoo-task update`** the program is not the one that was enabled: run `git shuttle addon enable odoo-task` again (it shows
+  what it asks for once more).
+- **For its author:** `git shuttle addon check odoo-task` tells whether it follows the protocol.
+
 ## Requirements
 
 - Python 3.9 or later (standard library only).
@@ -273,7 +298,8 @@ See [SECURITY.md](SECURITY.md).
 
 ```
 bin/odoo-task          launcher
-src/odoo_task/         the package: client, fetch, html_text, images, store, taskref, listing, selection, clipboard, opener, menu, update, cli
+bin/git-shuttle-odoo-task  launcher of the add-on of git-shuttle
+src/odoo_task/         the package: client, fetch, html_text, images, store, taskref, listing, selection, clipboard, opener, menu, update, shuttle (the add-on), cli
 scripts/               install.sh (one-line installer, also used by `update`) and release.sh (builds a release)
 tests/                 unit tests with a fake Odoo server on localhost
 docs/ARCHITECTURE.md   how it is built
