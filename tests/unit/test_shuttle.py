@@ -502,3 +502,12 @@ class TasksAll(Base):
             shuttle.hook_tasks({**self.ctx, "hook": "tasks", "args": {}})
             shuttle.hook_tasks({**self.ctx, "hook": "tasks", "args": {"all": "1"}})
         self.assertEqual([c.args[2] for c in load.call_args_list], [False, True])
+
+
+class BranchText(unittest.TestCase):
+    def test_quotes_and_signs_of_a_title_are_dropped_from_the_proposed_name(self):
+        self.assertEqual(
+            shuttle.branch_text('Copy "Export to Cigolog" to Accounting ($5?)'),
+            "Copy Export to Cigolog to Accounting ( 5 )",
+        )
+        self.assertEqual(shuttle.branch_text("Keep manual Order Date"), "Keep manual Order Date")

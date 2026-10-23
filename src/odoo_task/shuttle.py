@@ -158,6 +158,11 @@ def clean(value: str, limit: int, single_line: bool = True) -> str:
     return value if len(value) <= limit else value[: limit - 1].rstrip() + "…"
 
 
+def branch_text(name: str) -> str:
+    """The name proposed for the branch: quotes, $, ? and the like of a title are dropped."""
+    return clean(re.sub(r"\s+", " ", re.sub(r"[^\w\[\]() .,:#'&/-]", " ", name)).strip(), 120)
+
+
 def strip_tag(title: str) -> str:
     """'[Sales] Keep manual Order Date' -> 'Keep manual Order Date': tags at the start are not part of a name."""
     return re.sub(r"^(\s*\[[^\]]*\]\s*)+", "", title or "").strip()
@@ -198,7 +203,7 @@ def hook_start(ctx: dict) -> dict:
     folder, task = load(ctx, task_id, fetch=True)
     name = strip_tag(task["title"]) or f"task {task_id}"
     return {
-        "branch": clean(name, 120),
+        "branch": branch_text(name),
         "reference": reference_of(task_id, task),
         "note": clean(f"task {task_id}: {task['title']}", 500),
     }
