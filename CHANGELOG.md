@@ -5,6 +5,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-23
+
+### Added
+- The git-shuttle add-on can add the pull request and the commits to the **Customer report** of a task (hook `report`), for the PM to check on
+  GitHub. It is off until `git shuttle addon report odoo-task on` (for one repository), shows the text and asks first, and only **adds**: the text
+  that is in the field is kept, one entry for each pull request, and the old value is put back if Odoo changed it. Only a custom field (`x_...`)
+  of text or html type of one task is written (`x_customer_report`, or `git config shuttle.odoo-task.report-field`). The general client is still
+  read-only; the write is the separate `OdooClient.append_custom_field`.
+
+### Fixed
+- The add-on: the description of a pull request no longer starts with an image of the task (a file on your machine, it shows nothing on GitHub): the
+  first paragraph with text is used.
+
 ## [0.2.1] - 2026-10-23
 
 ### Fixed
