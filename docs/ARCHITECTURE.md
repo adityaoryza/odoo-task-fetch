@@ -30,7 +30,7 @@ tests/                   Unit tests; fake_odoo.py is a fake Odoo XML-RPC server 
 
 | Decision | Why |
 |---|---|
-| **Read-only client with an allow-list** | The tool is about reading. Enforcing it in one function (`OdooClient.execute`) means no future code path can write by accident, and a test proves it. |
+| **Read-only client with an allow-list** | The tool is about reading. Enforcing it in one function (`OdooClient.execute`) means no future code path can write by accident, and a test proves it. The only write, `OdooClient.append_custom_field` (an `x_...` field of one task, for the git-shuttle report), is a separate method that `execute` cannot reach. |
 | **Standard library only** | Nothing to install, no virtualenv, no supply-chain surface. XML-RPC, `argparse`, `html.parser` are enough. |
 | **Profiles hold no secret** | A profile can be copied, committed by mistake or pasted in a chat. The key is read from the environment, an explicit mode-600 file, or a hidden prompt. |
 | **Fields are checked with `fields_get`** | Odoo versions and custom modules differ. Asking only for fields that exist lets one profile work everywhere and turns a missing field into a warning. |

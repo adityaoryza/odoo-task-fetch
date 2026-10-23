@@ -80,7 +80,7 @@ class Manifest(unittest.TestCase):
     def test_it_says_what_it_is_and_what_it_asks_for(self):
         m = shuttle.manifest()
         self.assertEqual((m["protocol"], m["name"]), (1, "odoo-task"))
-        self.assertEqual(m["hooks"], ["start", "pr", "status", "tasks", "setup"])
+        self.assertEqual(m["hooks"], ["start", "pr", "status", "tasks", "setup", "report"])
         self.assertEqual(m["flags"], {"start": ["--task"]})
         self.assertEqual(
             m["env"],
@@ -511,3 +511,64 @@ class BranchText(unittest.TestCase):
             "Copy Export to Cigolog to Accounting ( 5 )",
         )
         self.assertEqual(shuttle.branch_text("Keep manual Order Date"), "Keep manual Order Date")
+
+
+class ReportHook(Base):
+    def ctx_for(self, action):
+        pr = {"url": "https://github.example/a/b/pull/1", "title": "T", "base": "main"}
+        return {
+            **self.ctx,
+            "hook": "report",
+            "action": action,
+            "ref_id": "15493",
+            "branch": "feature/x",
+            "pr": pr,
+            "commits": [{"sha": "b" * 40, "subject": "s", "url": "https://github.example/a/b/commit/" + "b" * 40}],
+        }
+
+    def fake(self, value=""):
+        from tests.unit.test_report import Fake
+
+        return Fake(value)
+
+    def test_preview_says_what_will_be_added_and_writes_nothing(self):
+        fake = self.fake("<p>PM text</p>")
+        with mock.patch("odoo_task.cli.connect", return_value=fake), mock.patch("odoo_task.cli.resolve_profile"):
+            out = shuttle.hook_report(self.ctx_for("preview"))
+        self.assertTrue(out["ok"])
+        self.assertIn("the text is kept", out["message"])
+        self.assertIn("https://github.example/a/b/pull/1", out["text"])
+        self.assertEqual(fake.writes, [])
+
+    def test_post_adds_after_the_old_text(self):
+        fake = self.fake("<p>PM text</p>")
+        with mock.patch("odoo_task.cli.connect", return_value=fake), mock.patch("odoo_task.cli.resolve_profile"):
+            out = shuttle.hook_report(self.ctx_for("post"))
+        self.assertTrue(out["ok"], out)
+        self.assertTrue(fake.value.startswith("<p>PM text</p>"))
+
+    def test_a_problem_is_an_answer_not_a_crash(self):
+        from odoo_task.client import OdooError
+
+        with (
+            mock.patch("odoo_task.cli.connect", side_effect=OdooError("Authentication failed")),
+            mock.patch("odoo_task.cli.resolve_profile"),
+        ):
+            out = shuttle.hook_report(self.ctx_for("post"))
+        self.assertEqual((out["ok"], out["message"]), (False, "Authentication failed"))
+
+    def test_the_field_can_be_chosen_per_repository_but_only_a_custom_one(self):
+        git(self.repo, "config", "shuttle.odoo-task.report-field", "name")
+        with mock.patch("odoo_task.cli.connect", return_value=self.fake()), mock.patch("odoo_task.cli.resolve_profile"):
+            out = shuttle.hook_report(self.ctx_for("post"))
+        self.assertFalse(out["ok"])
+        self.assertIn("custom field", out["message"])
+
+
+class PullRequestImages(Base):
+    def test_an_image_that_is_a_local_file_is_not_in_the_description_and_the_next_paragraph_is(self):
+        self.task(text=TASK_MD.replace("When a quotation is confirmed", "![image](img_att_1.png)\n\nWhen a quotation is confirmed"))
+        ctx = {**self.ctx, "hook": "pr", "ref-addon": "odoo-task", "ref-id": "15607", "commits": ""}
+        body = shuttle.hook_pr(ctx)["body"]
+        self.assertNotIn("img_att_1.png", body)
+        self.assertIn("When a quotation is confirmed", body)
