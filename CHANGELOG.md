@@ -5,6 +5,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-26
+
+### Added
+- `odoo-task fields [WORDS...]`: lists the custom fields of a task (`x_...`), or the fields whose name or label holds every word (`odoo-task fields customer
+  report`), with their type: the way to find the technical name of a field (for the Customer report of git-shuttle) without developer mode in Odoo.
+
+### Fixed
+- When the field of the Customer report does not exist in your Odoo, the message names the custom text fields that look like it (up to three, with their
+  labels) and the command that sets the right one (`git config shuttle.odoo-task.report-field NAME`), instead of only saying that the field is missing.
+
 ## [0.4.0] - 2026-10-26
 
 ### Added
