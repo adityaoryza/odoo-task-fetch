@@ -218,7 +218,8 @@ class Stepper(unittest.TestCase):
         row = report.stepper_html(PHASES)
         self.assertEqual(row.count("<td"), len(report.STEPS))
         self.assertEqual(row.count("background:#1f4e5f"), len(PHASES))
-        self.assertIn("Deployed", row)
+        self.assertIn("Staging", row)
+        self.assertIn("Production", row)
         for bad in ("<img", "<svg", "<script"):
             self.assertNotIn(bad, row)
 

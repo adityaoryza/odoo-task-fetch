@@ -84,8 +84,9 @@ STEPS = (
     ("Pushed", "Pushed"),
     ("Pull request", "Pull request"),
     ("Merged", "Merged"),
+    ("Deployed", "Staging"),
     ("Released", "Released"),
-    ("Deployed", "Deployed"),
+    ("Deployed to prod", "Production"),
 )
 
 
