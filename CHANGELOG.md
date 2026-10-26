@@ -5,6 +5,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-26
+
+### Changed
+
+- The row of steps has two cells for the deploys: **Staging** and **Production** (the step `Deployed to prod`), instead of one.
+
 ## [0.6.0] - 2026-10-26
 
 ### Added
