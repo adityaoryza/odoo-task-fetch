@@ -222,9 +222,10 @@ class Steps(unittest.TestCase):
         report.post(fake, 1, "x_customer_report", self.info())
         self.assertTrue(fake.value.startswith("<p>PM text</p>"))
         for text in (
-            "<strong>Started</strong>",
-            "<strong>Commits</strong>",
-            "<strong>Pull request</strong>",
+            "<table",
+            ">Started</td>",
+            ">Commits</td>",
+            ">Pull request</td>",
             'href="https://github.example/a/b/commit/0578368a"',
         ):
             self.assertIn(text, fake.value)

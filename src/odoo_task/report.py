@@ -76,23 +76,29 @@ def phases_text(phases: list[dict]) -> str:
 
 
 def phases_html(phases: list[dict]) -> str:
+    """The steps as a table (step, date, details); the inline styles are a bonus, without them it is a plain table."""
     esc = html.escape
-    out = [f"<p><strong>git-shuttle</strong> &middot; the steps of the task &middot; {time.strftime('%Y-%m-%d')}</p>"]
+    cell = "padding:6px 10px;border:1px solid #d9dee3;vertical-align:top;"
+    head = "padding:6px 10px;border:1px solid #d9dee3;background:#f1f4f6;color:#44525e;text-align:left;font-weight:600;"
+    out = [
+        f"<p><strong>git-shuttle</strong> &middot; the steps of the task &middot; {time.strftime('%Y-%m-%d')}</p>",
+        '<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;">',
+        f'<thead><tr><th style="{head}width:16%;">Step</th><th style="{head}width:18%;">Date</th>'
+        f'<th style="{head}">Details</th></tr></thead><tbody>',
+    ]
     for phase in phases:
-        out.append(
-            f"<p><strong>{esc(str(phase.get('title', '')))}</strong> &middot; {esc(_when(phase.get('when', '')))}</p>"
-        )
-        rows = []
+        lines = []
         for item in phase["items"][:MAX_COMMITS]:
             text = esc(_shown(item))
-            rows.append(
-                f'<li><a href="{esc(item["url"], quote=True)}">{text}</a></li>'
-                if item.get("url")
-                else f"<li>{text}</li>"
-            )
+            lines.append(f'<a href="{esc(item["url"], quote=True)}">{text}</a>' if item.get("url") else text)
         if len(phase["items"]) > MAX_COMMITS:
-            rows.append(f"<li>and {len(phase['items']) - MAX_COMMITS} more</li>")
-        out.append("<ul>" + "".join(rows) + "</ul>")
+            lines.append(f"and {len(phase['items']) - MAX_COMMITS} more")
+        out.append(
+            f'<tr><td style="{cell}font-weight:600;color:#1f4e5f;">{esc(str(phase.get("title", "")))}</td>'
+            f'<td style="{cell}white-space:nowrap;">{esc(_when(phase.get("when", "")))}</td>'
+            f'<td style="{cell}">{"<br/>".join(lines)}</td></tr>'
+        )
+    out.append("</tbody></table>")
     return "".join(out)
 
 
