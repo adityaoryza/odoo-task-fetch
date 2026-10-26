@@ -5,6 +5,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-26
+
+### Added
+
+- The Customer Report has a row of steps (Started to Deployed): a dark cell for each step that is in the trace, a light one for the others. It uses plain cells with a background, which Odoo keeps (a picture with a data address it does not show).
+
+### Changed
+
+- The steps of the task are one block of git-shuttle at the start of an html field (`<div id="git-shuttle-flow">`). A later run replaces that block with the newer one, and nothing else: the other text is read first, kept as it is, and put back if Odoo changed it. An older entry stays below the block. A text field is still only added to.
+
 ## [0.5.1] - 2026-10-26
 
 ### Changed
