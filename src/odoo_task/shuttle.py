@@ -12,11 +12,13 @@ here so that a long title is cut instead of refused.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from . import __version__, store
@@ -102,9 +104,18 @@ def find_folder(root: Path, task_id: int) -> Path | None:
     return max(found, key=lambda p: (p / "task.md").stat().st_mtime) if found else None
 
 
-def fetch_missing(task_id: int, ctx: dict) -> None:
-    """`odoo-task fetch N`, as a program of its own: read-only, and its own error is the message when it cannot."""
+def fetch_missing(
+    task_id: int, ctx: dict, messages: int = 0, timeout: int = FETCH_TIMEOUT, attachments: bool = False
+) -> None:
+    """`odoo-task fetch N`, as a program of its own: read-only, and its own error is the message when it cannot.
+
+    With `attachments` the files and the images of the description are downloaded too: that takes longer, so the
+    first fetch of a task (a hook has a few seconds) lists them only, and a refresh (it has more time) downloads them.
+    """
     argv = [sys.executable, "-m", "odoo_task", "fetch", str(int(task_id))]
+    argv.append("--attachments" if attachments else "--no-attachments")
+    if messages > 0:
+        argv += ["--messages", str(int(messages))]
     name = profile_name(ctx)
     if name:
         argv += ["--profile", name]
@@ -116,11 +127,11 @@ def fetch_missing(task_id: int, ctx: dict) -> None:
     try:
         # our own interpreter and our own package, with the number of a task (an int): nothing from outside
         done = subprocess.run(  # noqa: S603
-            argv, capture_output=True, text=True, timeout=FETCH_TIMEOUT, stdin=subprocess.DEVNULL, env=env
+            argv, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL, env=env
         )
     except subprocess.TimeoutExpired:
         raise Problem(
-            f"task {task_id} is not fetched yet and Odoo did not answer in {FETCH_TIMEOUT} s: odoo-task fetch {task_id}"
+            f"task {task_id} is not fetched yet and Odoo did not answer in {timeout} s: odoo-task fetch {task_id}"
         ) from None
     if done.returncode != 0:
         why = " ".join((done.stderr or done.stdout).split())[:200]
@@ -133,7 +144,7 @@ def fetch_missing(task_id: int, ctx: dict) -> None:
 def read_task(folder: Path) -> dict:
     """The parts of task.md that are used: the title, the fields at the top, the description."""
     text = (folder / "task.md").read_text(encoding="utf-8", errors="replace")
-    title, fields, description, section = "", {}, [], ""
+    title, fields, description, messages, listed, section = "", {}, [], [], [], ""
     for line in text.splitlines():
         if line.startswith("# ") and not title:
             title = line[2:].strip()
@@ -146,7 +157,17 @@ def read_task(folder: Path) -> dict:
             fields[field.group(1).strip().lower()] = field.group(2).strip()
         elif section == "description":
             description.append(line)
-    return {"title": title, "fields": fields, "description": "\n".join(description).strip()}
+        elif section == "latest messages":
+            messages.append(line)
+        elif section == "attachments" and line.startswith("- "):
+            listed.append(line[2:].split(" (")[0].strip())
+    return {
+        "title": title,
+        "fields": fields,
+        "description": "\n".join(description).strip(),
+        "messages": "\n".join(messages).strip(),
+        "attachments": listed,
+    }
 
 
 def clean(value: str, limit: int, single_line: bool = True) -> str:
@@ -218,20 +239,73 @@ def _ref_id(ctx: dict) -> int | None:
         return None
 
 
+REFRESH_TIMEOUT = (
+    40  # a refresh downloads the attachments too: more time than the look at a task that is not fetched yet
+)
+REFRESH_MESSAGES = 10  # the latest messages of the task that a refresh brings (the chatter is often where the news is)
+
+
+def _readable(text: str) -> str:
+    """What a person reads of a piece of task.md: no local image (a file on this machine), no empty marker."""
+    text = re.sub(r"!\[[^\]]*\]\((?!https?://)[^)]*\)", "", text or "")
+    return text.replace("_(empty)_", "").replace("**", "").strip()
+
+
+def _digest(folder: Path | None) -> str:
+    try:
+        return hashlib.sha256((folder / "task.md").read_bytes()).hexdigest() if folder else ""
+    except OSError:
+        return ""
+
+
 def hook_status(ctx: dict) -> dict:
+    """The card of the task. `args.refresh` fetches it again from Odoo first (a read) and says whether it changed."""
     task_id = _ref_id(ctx)
     if task_id is None:
         return {"cards": []}
+    refresh = (ctx.get("args") or {}).get("refresh") == "1"
+    note, before = "", _digest(find_folder(tasks_folder(ctx), task_id))
+    if refresh:
+        try:
+            fetch_missing(task_id, ctx, messages=REFRESH_MESSAGES, timeout=REFRESH_TIMEOUT, attachments=True)
+        except Problem as problem:
+            note = f"not refreshed: {problem}"
     folder, task = load(ctx, task_id, fetch=False)
     fields = [
         {"label": label, "value": clean(task["fields"][key], 300)}
-        for key, label in (("project", "Project"), ("assignees", "Assignees"), ("tags", "Tags"))
+        for key, label in (
+            ("project", "Project"),
+            ("assignees", "Assignees"),
+            ("tags", "Tags"),
+            ("deadline", "Deadline"),
+        )
         if task["fields"].get(key)
     ]
+    fetched = time.strftime("%Y-%m-%d %H:%M", time.localtime((folder / "task.md").stat().st_mtime))
+    fields.append({"label": "Fetched", "value": fetched})
+    files = (
+        sorted(p.name for p in (folder / "attachments").glob("*") if p.is_file())
+        if (folder / "attachments").is_dir()
+        else []
+    )
+    if files:
+        shown = ", ".join(files[:4]) + (f" and {len(files) - 4} more" if len(files) > 4 else "")
+        fields.append({"label": "Files", "value": clean(f"{len(files)} saved: {shown}", 300)})
+    elif task.get("attachments"):
+        fields.append({"label": "Files", "value": f"{len(task['attachments'])} listed, not downloaded: press Refresh"})
+    fields.append({"label": "Folder", "value": clean(str(folder), 300)})
+    if refresh:
+        after = _digest(folder)
+        what = (
+            "the task changed since the last fetch" if before and after != before else "no change since the last fetch"
+        )
+        fields.append({"label": "Refresh", "value": clean(note or (what if before else "fetched"), 300)})
+    description = _readable(task["description"]) or "(no description in Odoo)"
+    messages = _readable(task.get("messages", ""))
     card = {
         "title": clean(task["title"] or f"Task {task_id}", 120),
         "subtitle": clean(task["fields"].get("stage", ""), 200),
-        "text": clean(task["description"], 600, single_line=False),
+        "text": clean(description + (f"\n\nLatest messages\n{messages}" if messages else ""), 5000, single_line=False),
         "fields": fields[:12],
     }
     link = reference_of(task_id, task).get("link")
