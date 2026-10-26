@@ -5,6 +5,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-26
+
+### Added
+- The Customer Report can hold **the steps of the task**, one block for each: Started, Linked to the task, Commits, Pushed, Pull request, Merged, Released, Deployed,
+  each with its date (in your time) and its links. It only adds: a step (or a commit, a deploy) that is in the field already is not written again, so a later run
+  adds only what is new, and the report grows as the task goes on. git-shuttle gives the steps (from the trace of the task); without them the report is still
+  the pull request and its commits.
+
+### Fixed
+- The card of a task shows a markdown link as text: `[label](address)` is `label (address)`, and `[address](address)` is the address alone (it was shown as it is written
+  in the task).
+
 ## [0.4.2] - 2026-10-26
 
 ### Added
