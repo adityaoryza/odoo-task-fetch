@@ -229,10 +229,12 @@ class Status(Base):
         self.assertEqual(card["title"], "[Sales] Keep manual Order Date on confirmation")
         self.assertEqual(card["subtitle"], "Running")
         self.assertEqual(card["link"], "https://odoo.example/web#id=15607&model=project.task&view_type=form")
+        fields = {f["label"]: f["value"] for f in card["fields"]}
         self.assertEqual(
-            {f["label"]: f["value"] for f in card["fields"]},
+            {k: v for k, v in fields.items() if k not in ("Fetched", "Files", "Folder")},
             {"Project": "Confort et eau", "Assignees": "Aditya Oryza Mahendra", "Tags": "whatsapp request"},
         )
+        self.assertRegex(fields["Fetched"], r"^\d{4}-\d\d-\d\d \d\d:\d\d$", "when the task was read, in your time")
         self.assertIn("must stay equal", card["text"])
         self.assertNotIn("Attachments", card["text"], "only the description")
 
@@ -260,7 +262,7 @@ class Status(Base):
         card = shuttle.hook_status(self.card_ctx(**{"ref-id": "3"}))["cards"][0]
         self.assertNotIn("link", card)
         self.assertLessEqual(len(card["subtitle"]), 200)
-        self.assertLessEqual(len(card["text"]), 600)
+        self.assertLessEqual(len(card["text"]), 5000, "the limit of the protocol")
 
 
 class PullRequest(Base):
@@ -567,8 +569,108 @@ class ReportHook(Base):
 
 class PullRequestImages(Base):
     def test_an_image_that_is_a_local_file_is_not_in_the_description_and_the_next_paragraph_is(self):
-        self.task(text=TASK_MD.replace("When a quotation is confirmed", "![image](img_att_1.png)\n\nWhen a quotation is confirmed"))
+        self.task(
+            text=TASK_MD.replace(
+                "When a quotation is confirmed", "![image](img_att_1.png)\n\nWhen a quotation is confirmed"
+            )
+        )
         ctx = {**self.ctx, "hook": "pr", "ref-addon": "odoo-task", "ref-id": "15607", "commits": ""}
         body = shuttle.hook_pr(ctx)["body"]
         self.assertNotIn("img_att_1.png", body)
         self.assertIn("When a quotation is confirmed", body)
+
+
+class StatusRefresh(Base):
+    def ctx_for(self, refresh=False):
+        args = {"refresh": "1"} if refresh else {}
+        return {**self.ctx, "hook": "status", "ref-addon": "odoo-task", "ref-id": "15607", "args": args}
+
+    def card(self, ctx):
+        return shuttle.hook_status(ctx)["cards"][0]
+
+    def test_a_look_at_the_card_does_not_fetch(self):
+        self.task()
+        with mock.patch.object(shuttle, "fetch_missing") as fetch:
+            card = self.card(self.ctx_for())
+        fetch.assert_not_called()
+        self.assertEqual([f["label"] for f in card["fields"] if f["label"] in ("Fetched", "Refresh")], ["Fetched"])
+
+    def test_a_refresh_fetches_again_with_the_latest_messages_and_says_what_changed(self):
+        folder = self.task()
+
+        def fetch(task_id, ctx, messages=0, timeout=0, attachments=False):
+            (folder / "task.md").write_text(
+                TASK_MD + "\n## Latest messages\n\n**Sam**, 2026-10-26\n\nThe client wrote back.\n", encoding="utf-8"
+            )
+
+        with mock.patch.object(shuttle, "fetch_missing", side_effect=fetch) as fetched:
+            card = self.card(self.ctx_for(refresh=True))
+        fetched.assert_called_once()
+        self.assertEqual(fetched.call_args.kwargs["messages"], shuttle.REFRESH_MESSAGES)
+        fields = {f["label"]: f["value"] for f in card["fields"]}
+        self.assertEqual(fields["Refresh"], "the task changed since the last fetch")
+        self.assertIn("The client wrote back.", card["text"])
+        self.assertIn("Latest messages", card["text"])
+        self.assertNotIn("**", card["text"])
+
+    def test_a_refresh_that_brings_nothing_new_says_so(self):
+        self.task()
+        with mock.patch.object(shuttle, "fetch_missing"):
+            card = self.card(self.ctx_for(refresh=True))
+        self.assertEqual({f["label"]: f["value"] for f in card["fields"]}["Refresh"], "no change since the last fetch")
+
+    def test_a_refresh_that_fails_keeps_the_card_and_says_why(self):
+        self.task()
+        with mock.patch.object(shuttle, "fetch_missing", side_effect=shuttle.Problem("Odoo did not answer")):
+            card = self.card(self.ctx_for(refresh=True))
+        self.assertIn("Odoo did not answer", {f["label"]: f["value"] for f in card["fields"]}["Refresh"])
+        self.assertTrue(card["title"])
+
+    def test_an_empty_description_says_so_instead_of_showing_a_marker(self):
+        self.task(text=TASK_MD.split("## Description")[0] + "## Description\n\n_(empty)_\n")
+        card = self.card(self.ctx_for())
+        self.assertEqual(card["text"], "(no description in Odoo)")
+
+    def test_a_local_image_is_not_in_the_card_and_a_long_description_is_kept_whole(self):
+        long_text = "word " * 300
+        self.task(
+            text=TASK_MD.split("## Description")[0] + f"## Description\n\n![image](img_att_1.png)\n\n{long_text}\n"
+        )
+        card = self.card(self.ctx_for())
+        self.assertNotIn("img_att_1.png", card["text"])
+        self.assertGreater(len(card["text"]), 1000)
+        self.assertLessEqual(len(card["text"]), 5000)
+
+
+class FetchMissing(Base):
+    def argv_of(self, **kwargs):
+        with mock.patch.object(shuttle.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+            shuttle.fetch_missing(15607, self.ctx, **kwargs)
+        return run.call_args.args[0]
+
+    def test_the_first_fetch_lists_the_attachments_and_does_not_download_them(self):
+        argv = self.argv_of()
+        self.assertIn("--no-attachments", argv)
+        self.assertNotIn("--attachments", argv)
+
+    def test_a_refresh_downloads_the_files_and_the_images_and_brings_the_messages(self):
+        argv = self.argv_of(messages=10, attachments=True)
+        self.assertIn("--attachments", argv)
+        self.assertEqual(argv[argv.index("--messages") + 1], "10")
+
+    def test_the_card_names_the_files_and_the_folder(self):
+        folder = self.task()
+        (folder / "attachments").mkdir()
+        (folder / "attachments" / "img_att_1.png").write_bytes(b"x")
+        (folder / "attachments" / "img_att_2.png").write_bytes(b"x")
+        ctx = {**self.ctx, "hook": "status", "ref-addon": "odoo-task", "ref-id": "15607"}
+        fields = {f["label"]: f["value"] for f in shuttle.hook_status(ctx)["cards"][0]["fields"]}
+        self.assertEqual(fields["Files"], "2 saved: img_att_1.png, img_att_2.png")
+        self.assertEqual(fields["Folder"], str(folder))
+
+    def test_files_that_are_listed_but_not_downloaded_say_how_to_get_them(self):
+        self.task()  # TASK_MD lists one attachment and the folder has none
+        ctx = {**self.ctx, "hook": "status", "ref-addon": "odoo-task", "ref-id": "15607"}
+        fields = {f["label"]: f["value"] for f in shuttle.hook_status(ctx)["cards"][0]["fields"]}
+        self.assertIn("press Refresh", fields["Files"])

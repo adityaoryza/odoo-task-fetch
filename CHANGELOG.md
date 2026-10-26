@@ -5,6 +5,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-26
+
+### Added
+- The card of the task in git-shuttle can be **refreshed**: the add-on fetches the task from Odoo again (a read, with its latest 10 messages) and says
+  whether it changed since the last fetch and when it was fetched. The card shows the whole description (up to 5000 characters) and the latest
+  messages instead of its first 600 characters, says "(no description in Odoo)" for an empty one, leaves out the images that are files of your machine,
+  and shows the deadline.
+- A refresh downloads the **attachments and the images of the description** too (the first fetch, when a branch is started, only lists them: a hook has a
+  few seconds), and the card says which files were saved and in which folder (`Files`, `Folder`), or that they are listed and not downloaded yet.
+
 ## [0.3.0] - 2026-10-23
 
 ### Added
