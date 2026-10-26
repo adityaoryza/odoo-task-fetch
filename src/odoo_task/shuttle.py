@@ -246,8 +246,18 @@ REFRESH_MESSAGES = 10  # the latest messages of the task that a refresh brings (
 
 
 def _readable(text: str) -> str:
-    """What a person reads of a piece of task.md: no local image (a file on this machine), no empty marker."""
+    """What a person reads of task.md: no local image, no empty marker, no markdown link."""
     text = re.sub(r"!\[[^\]]*\]\((?!https?://)[^)]*\)", "", text or "")
+    # [label](address) is read as `label (address)`; when the label is the address itself, as the address alone
+    text = re.sub(
+        r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+        lambda m: (
+            m.group(2)
+            if m.group(1).strip() in (m.group(2), "") or m.group(1).startswith("http")
+            else f"{m.group(1)} ({m.group(2)})"
+        ),
+        text,
+    )
     return text.replace("_(empty)_", "").replace("**", "").strip()
 
 
@@ -517,6 +527,8 @@ def hook_report(ctx: dict) -> dict:
     # a field of a module of your own (report_details) is written only when it is named a second time, on purpose
     allow_plain = _git_config(root, "shuttle.odoo-task.report-field-allow") == field
     info = {"branch": ctx.get("branch", ""), "pr": ctx.get("pr") or {}, "commits": ctx.get("commits") or []}
+    if ctx.get("phases") is not None:
+        info["phases"] = ctx["phases"]
     try:
         client = connect(resolve_profile(profile_name(ctx)))
         if ctx.get("action") == "post":
@@ -544,7 +556,7 @@ def hook_report(ctx: dict) -> dict:
     return {
         "ok": True,
         "message": clean(note, 300),
-        "text": report.entry_text(info)[:6000],
+        "text": done["preview"][:6000],
         "field": field,
         "skipped": done["skip"],
     }
