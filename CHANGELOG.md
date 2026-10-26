@@ -5,6 +5,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-26
+
+### Changed
+
+- The steps of the task in the Customer Report are a table (step, date, details) instead of lists. The inline colours are a bonus: if the field of Odoo removes them, it is still a plain table.
+
 ## [0.5.0] - 2026-10-26
 
 ### Added
