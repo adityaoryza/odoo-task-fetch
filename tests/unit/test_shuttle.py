@@ -559,6 +559,20 @@ class ReportHook(Base):
             out = shuttle.hook_report(self.ctx_for("post"))
         self.assertEqual((out["ok"], out["message"]), (False, "Authentication failed"))
 
+    def test_a_field_without_x_is_written_only_when_it_is_named_twice(self):
+        git(self.repo, "config", "shuttle.odoo-task.report-field", "report_details")
+        fake = self.fake()
+        fake.fields_get = lambda model, attributes=None: {
+            "report_details": {"type": "html", "string": "Report Details"}
+        }
+        with mock.patch("odoo_task.cli.connect", return_value=fake), mock.patch("odoo_task.cli.resolve_profile"):
+            refused = shuttle.hook_report(self.ctx_for("post"))
+            git(self.repo, "config", "shuttle.odoo-task.report-field-allow", "report_details")
+            done = shuttle.hook_report(self.ctx_for("post"))
+        self.assertFalse(refused["ok"])
+        self.assertIn("report-field-allow", refused["message"])
+        self.assertTrue(done["ok"], done)
+
     def test_the_field_can_be_chosen_per_repository_but_only_a_custom_one(self):
         git(self.repo, "config", "shuttle.odoo-task.report-field", "name")
         with mock.patch("odoo_task.cli.connect", return_value=self.fake()), mock.patch("odoo_task.cli.resolve_profile"):

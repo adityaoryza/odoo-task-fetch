@@ -501,7 +501,8 @@ def hook_report(ctx: dict) -> dict:
 
     `action: preview` reads Odoo and says what would be added; `action: post` adds it. git-shuttle calls it
     only when the user turned it on for the repository, and shows the preview first. The field is git config
-    shuttle.odoo-task.report-field (default x_customer_report).
+    shuttle.odoo-task.report-field (default x_customer_report); a name without x_ also needs
+    shuttle.odoo-task.report-field-allow with the same name.
     """
     from . import report
     from .cli import connect, resolve_profile
@@ -511,12 +512,15 @@ def hook_report(ctx: dict) -> dict:
         task_id = int(str(ctx.get("ref_id", "")))
     except ValueError:
         raise Problem("no task number to write to") from None
-    field = _git_config(ctx.get("repo", {}).get("root"), "shuttle.odoo-task.report-field") or report.DEFAULT_FIELD
+    root = ctx.get("repo", {}).get("root")
+    field = _git_config(root, "shuttle.odoo-task.report-field") or report.DEFAULT_FIELD
+    # a field of a module of your own (report_details) is written only when it is named a second time, on purpose
+    allow_plain = _git_config(root, "shuttle.odoo-task.report-field-allow") == field
     info = {"branch": ctx.get("branch", ""), "pr": ctx.get("pr") or {}, "commits": ctx.get("commits") or []}
     try:
         client = connect(resolve_profile(profile_name(ctx)))
         if ctx.get("action") == "post":
-            message = report.post(client, task_id, field, info)
+            message = report.post(client, task_id, field, info, allow_plain)
             return {
                 "ok": True,
                 "message": clean(message, 300),
@@ -524,7 +528,7 @@ def hook_report(ctx: dict) -> dict:
                 "field": field,
                 "skipped": "Nothing was written" in message,
             }
-        done = report.plan(client, task_id, field, info)
+        done = report.plan(client, task_id, field, info, allow_plain)
     except (OdooError, PermissionError, ValueError, FileNotFoundError) as error:
         return {"ok": False, "message": clean(str(error), 300), "text": "", "field": field, "skipped": False}
     where = (

@@ -277,7 +277,9 @@ tested against Odoo, and only then saved in `~/.config/odoo-task/secrets/NAME` (
   **Customer report**, and only when you turn it on for a repository (`git shuttle addon report odoo-task on`): after `git shuttle pr` it shows
   the pull request and the commits it would add, asks, and then **adds** them after the text that is in the field (never removing or changing
   it; one entry for each pull request; if Odoo changed the old text, the old value is put back). Only a custom field (`x_...`) of text or html
-  type of one task is written: `x_customer_report`, or `git config shuttle.odoo-task.report-field x_other`.
+  type of one task is written: `x_customer_report`, or `git config shuttle.odoo-task.report-field x_other`. A field of a module of your own, without `x_` (like
+  `report_details`), is written only when you name it a second time on purpose (`git config shuttle.odoo-task.report-field-allow report_details`); the fields that
+  hold the task itself (`name`, `description`, `state`, `stage_id`, `project_id`, `user_ids`) never are.
 - **Where the tasks are:** the folder of your connection (`odoo-task profiles --show`). To use another for one repository:
   `git config shuttle.odoo-task.dir ~/path`, and `git config shuttle.odoo-task.profile NAME` for another connection.
 - **After an `odoo-task update`** the program is not the one that was enabled: run `git shuttle addon enable odoo-task` again (it shows

@@ -17,6 +17,9 @@ READ_ONLY_METHODS = frozenset({"search_read", "read", "search", "search_count", 
 
 DEFAULT_TIMEOUT = 30
 
+# the fields that hold the task itself: never written, whatever the user says
+PROTECTED_FIELDS = frozenset({"name", "display_name", "description", "state", "stage_id", "project_id", "user_ids"})
+
 
 class OdooError(Exception):
     """Any failure talking to Odoo, with a message that is safe to print (it never holds a secret)."""
@@ -144,17 +147,24 @@ class OdooClient:
         except (OSError, xmlrpc.client.Error) as exc:
             raise OdooError(f"Cannot reach {self.url}: {exc}") from None
 
-    def append_custom_field(self, model: str, record_id: int, field: str, value: str) -> None:
+    def append_custom_field(
+        self, model: str, record_id: int, field: str, value: str, allow_plain: bool = False
+    ) -> None:
         """The one write that odoo-task can make, for git-shuttle: one custom field (x_...) of one task.
 
         `execute` stays read-only. The caller has read the old value and keeps it: it only ever adds to what is there.
+        A field of a module of your own (report_details, without x_) is written only when the user named it on purpose
+        (`allow_plain`), and never one of the standard fields that hold the task itself.
         """
+        plain = bool(re.fullmatch(r"[a-z][a-z0-9_]{1,60}", field or "")) and field not in PROTECTED_FIELDS
         if (
             model != "project.task"
-            or not re.fullmatch(r"x_[a-z0-9_]{1,60}", field or "")
             or not isinstance(record_id, int)
+            or not (re.fullmatch(r"x_[a-z0-9_]{1,60}", field or "") or (allow_plain and plain))
         ):
-            raise OdooError("Refused: only a custom field (x_...) of a task can be written.")
+            raise OdooError(
+                "Refused: only a custom field of a task can be written (x_..., or one you named on purpose)."
+            )
         if self.uid is None or self._models is None:
             self.connect()
         assert self._models is not None

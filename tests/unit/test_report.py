@@ -28,9 +28,9 @@ class Fake:
         return {"x_customer_report": {"type": self.kind, "string": "Customer report"}, "name": {"type": "char"}}
 
     def read(self, model, ids, fields=None):
-        return [{"x_customer_report": self.value}]
+        return [{(fields or ["x_customer_report"])[0]: self.value}]
 
-    def append_custom_field(self, model, record_id, field, value):
+    def append_custom_field(self, model, record_id, field, value, allow_plain=False):
         self.writes.append(value)
         self.value = value if self.keeps or len(self.writes) > 1 else "rewritten by odoo"
 
@@ -120,6 +120,22 @@ class Post(unittest.TestCase):
         with self.assertRaises(OdooError):
             report.plan(Fake(kind="selection"), 1, "x_customer_report", INFO)
 
+    def test_a_field_of_your_own_module_is_written_only_when_it_was_named_on_purpose(self):
+        fake = Fake("<p>old</p>")
+        fake.fields_get = lambda model, attributes=None: {
+            "report_details": {"type": "html", "string": "Report Details"}
+        }
+        with self.assertRaises(OdooError) as caught:
+            report.plan(fake, 1, "report_details", INFO)
+        self.assertIn("report-field-allow report_details", str(caught.exception))
+        done = report.plan(fake, 1, "report_details", INFO, allow_plain=True)
+        self.assertTrue(done["new"].startswith("<p>old</p>"))
+
+    def test_the_fields_that_hold_the_task_are_never_written(self):
+        for field in ("description", "name", "state", "stage_id"):
+            with self.assertRaises(OdooError):
+                report.plan(Fake(), 1, field, INFO, allow_plain=True)
+
     def test_the_preview_writes_nothing(self):
         fake = Fake("old")
         done = report.plan(fake, 1, "x_customer_report", INFO)
@@ -133,6 +149,13 @@ class Guard(unittest.TestCase):
     def test_the_general_execute_stays_read_only(self):
         with self.assertRaises(OdooError):
             self.client().execute("project.task", "write", [[1], {"x_customer_report": "x"}])
+
+    def test_a_plain_field_needs_the_flag_and_a_protected_one_is_refused_even_with_it(self):
+        with self.assertRaises(OdooError):
+            self.client().append_custom_field("project.task", 1, "report_details", "v")
+        for field in ("description", "name"):
+            with self.assertRaises(OdooError):
+                self.client().append_custom_field("project.task", 1, field, "v", allow_plain=True)
 
     def test_the_narrow_write_refuses_other_fields_and_models(self):
         for model, field in (

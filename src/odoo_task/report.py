@@ -13,7 +13,7 @@ import re
 import time
 from typing import Any
 
-from .client import OdooClient, OdooError
+from .client import PROTECTED_FIELDS, OdooClient, OdooError
 
 MODEL = "project.task"
 DEFAULT_FIELD = "x_customer_report"
@@ -84,9 +84,13 @@ def _candidates(fields: dict) -> str:
     return " Look-alikes: " + ", ".join(near[:3]) + ". Set one: git config shuttle.odoo-task.report-field NAME"
 
 
-def field_kind(client: OdooClient, field: str) -> str:
-    if not FIELD_RE.match(field or ""):
-        raise OdooError(f"'{field}' is not a custom field (x_...): git-shuttle writes only to one of those.")
+def field_kind(client: OdooClient, field: str, allow_plain: bool = False) -> str:
+    plain_ok = allow_plain and re.fullmatch(r"[a-z][a-z0-9_]{1,60}", field or "") and field not in PROTECTED_FIELDS
+    if not FIELD_RE.match(field or "") and not plain_ok:
+        raise OdooError(
+            f"'{field}' is not a custom field (x_...): git-shuttle writes only to one of those. To write to a field "
+            f"of a module of your own on purpose: git config shuttle.odoo-task.report-field-allow {field}"
+        )
     fields = client.fields_get(MODEL, ["string", "type"])
     found = fields.get(field)
     if not found:
@@ -96,9 +100,9 @@ def field_kind(client: OdooClient, field: str) -> str:
     return str(found["type"])
 
 
-def plan(client: OdooClient, task_id: int, field: str, info: dict) -> dict:
+def plan(client: OdooClient, task_id: int, field: str, info: dict, allow_plain: bool = False) -> dict:
     """What would be written: {kind, old, new, entry, skip}. Reads Odoo; writes nothing."""
-    kind = field_kind(client, field)
+    kind = field_kind(client, field, allow_plain)
     rows = client.read(MODEL, [task_id], [field])
     if not rows:
         raise OdooError(f"Task {task_id} was not found (or you cannot read it).")
@@ -110,15 +114,15 @@ def plan(client: OdooClient, task_id: int, field: str, info: dict) -> dict:
     return {"kind": kind, "old": old, "entry": entry, "skip": skip, "new": str(old) + separator + entry}
 
 
-def post(client: OdooClient, task_id: int, field: str, info: dict) -> str:
+def post(client: OdooClient, task_id: int, field: str, info: dict, allow_plain: bool = False) -> str:
     """Adds the entry and says what happened. The old text is kept (put back if it is not all there afterwards)."""
-    done = plan(client, task_id, field, info)
+    done = plan(client, task_id, field, info, allow_plain)
     if done["skip"]:
         return f"Nothing was written: the Customer report already has this pull request ({field})."
-    client.append_custom_field(MODEL, task_id, field, done["new"])
+    client.append_custom_field(MODEL, task_id, field, done["new"], allow_plain)
     after = (client.read(MODEL, [task_id], [field]) or [{}])[0].get(field) or ""
     if done["old"] and _plain(done["old"]) not in _plain(after):
-        client.append_custom_field(MODEL, task_id, field, str(done["old"]))
+        client.append_custom_field(MODEL, task_id, field, str(done["old"]), allow_plain)
         raise OdooError(f"Odoo changed the old text of {field}: it was put back as it was; nothing was added.")
     count = len(info.get("commits") or [])
     return (
