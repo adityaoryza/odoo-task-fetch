@@ -1,3 +1,3 @@
 """odoo-task: fetch an Odoo task to a local Markdown folder (read-only)."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"

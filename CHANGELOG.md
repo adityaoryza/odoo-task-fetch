@@ -5,6 +5,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-26
+
+### Added
+- The Customer Report of git-shuttle can go to a field of a module of your own, without the `x_` (like `report_details`), when you name it a second time on
+  purpose: `git config shuttle.odoo-task.report-field report_details` and `git config shuttle.odoo-task.report-field-allow report_details`. The fields that hold
+  the task itself (`name`, `description`, `state`, `stage_id`, `project_id`, `user_ids`) are never written. It still only adds to what is there.
+
 ## [0.4.1] - 2026-10-26
 
 ### Added
