@@ -172,3 +172,148 @@ class Guard(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+PHASES = [
+    {
+        "title": "Started",
+        "when": "2026-10-26T02:13:00Z",
+        "items": [
+            {"text": "branch 19.0-feature/x", "ref": "19.0-feature/x"},
+            {"text": "Project: Preaucess", "ref": "Project: Preaucess"},
+        ],
+    },
+    {
+        "title": "Commits",
+        "when": "2026-10-26T04:37:00Z",
+        "items": [
+            {
+                "text": "0578368a [FEAT] sale: cancel",
+                "url": "https://github.example/a/b/commit/0578368a",
+                "ref": "0578368a",
+            },
+            {
+                "text": "8e1f0e85 [FEAT] planning: name",
+                "url": "https://github.example/a/b/commit/8e1f0e85",
+                "ref": "8e1f0e85",
+            },
+        ],
+    },
+    {
+        "title": "Pull request",
+        "when": "2026-10-26T04:37:00Z",
+        "items": [
+            {
+                "text": "Feedback -> 19.0-staging",
+                "url": "https://github.example/a/b/pull/286",
+                "ref": "https://github.example/a/b/pull/286",
+            }
+        ],
+    },
+]
+
+
+class Steps(unittest.TestCase):
+    def info(self, phases=PHASES):
+        return {"branch": "19.0-feature/x", "pr": {}, "commits": [], "phases": [dict(p) for p in phases]}
+
+    def test_every_step_is_written_with_its_title_and_its_links_after_the_old_text(self):
+        fake = Fake("<p>PM text</p>")
+        report.post(fake, 1, "x_customer_report", self.info())
+        self.assertTrue(fake.value.startswith("<p>PM text</p>"))
+        for text in (
+            "<strong>Started</strong>",
+            "<strong>Commits</strong>",
+            "<strong>Pull request</strong>",
+            'href="https://github.example/a/b/commit/0578368a"',
+        ):
+            self.assertIn(text, fake.value)
+        self.assertLess(fake.value.index("Started"), fake.value.index("Commits"))
+        self.assertLess(fake.value.index("Commits"), fake.value.index("Pull request"))
+
+    def test_a_step_that_is_in_the_field_is_not_written_again_and_a_new_one_is_added(self):
+        fake = Fake("")
+        report.post(fake, 1, "x_customer_report", self.info())
+        again = report.post(fake, 1, "x_customer_report", self.info())
+        self.assertEqual(len(fake.writes), 1)
+        self.assertIn("every step", again)
+        more = self.info(
+            PHASES
+            + [
+                {
+                    "title": "Merged",
+                    "when": "2026-10-26T04:38:00Z",
+                    "items": [
+                        {
+                            "text": "merged into 19.0-staging",
+                            "url": "https://github.example/a/b/commit/3e5f6695",
+                            "ref": "3e5f6695",
+                        }
+                    ],
+                }
+            ]
+        )
+        report.post(fake, 1, "x_customer_report", more)
+        self.assertEqual(len(fake.writes), 2)
+        written = fake.value[len(fake.writes[0]) :]
+        self.assertIn("Merged", written)
+        self.assertNotIn("Commits", written, "only the new step is added")
+
+    def test_a_new_commit_alone_is_added_to_a_report_that_has_the_others(self):
+        fake = Fake("")
+        report.post(fake, 1, "x_customer_report", self.info())
+        later = [
+            dict(PHASES[1], items=PHASES[1]["items"] + [{"text": "abcdef12 [FIX] sale: round", "ref": "abcdef12"}])
+        ]
+        report.post(fake, 1, "x_customer_report", self.info(later))
+        added = fake.value[len(fake.writes[0]) :]
+        self.assertIn("abcdef12", added)
+        self.assertNotIn("0578368a", added)
+
+    def test_the_preview_is_the_plain_text_of_what_is_new(self):
+        done = report.plan(Fake(""), 1, "x_customer_report", self.info())
+        self.assertIn("Commits - ", done["preview"])
+        self.assertIn("- 0578368a [FEAT] sale: cancel (https://github.example/a/b/commit/0578368a)", done["preview"])
+        self.assertEqual(done["count"], 5)
+
+    def test_text_and_html_differ_only_in_the_markup_and_the_text_field_gets_a_blank_line(self):
+        fake = Fake("line one", kind="text")
+        report.post(fake, 1, "x_customer_report", self.info())
+        self.assertTrue(fake.value.startswith("line one\n\ngit-shuttle - the steps of the task"))
+        self.assertNotIn("<p>", fake.value)
+
+    def test_the_text_of_a_step_is_escaped_in_html(self):
+        phases = [
+            {
+                "title": "Commits",
+                "when": "2026-10-26T04:37:00Z",
+                "items": [{"text": "a1b2c3d4 <script>alert(1)</script>", "ref": "a1b2c3d4"}],
+            }
+        ]
+        fake = Fake("")
+        report.post(fake, 1, "x_customer_report", self.info(phases))
+        self.assertNotIn("<script>", fake.value)
+        self.assertIn("&lt;script&gt;", fake.value)
+
+
+class StepTimes(unittest.TestCase):
+    def test_a_step_with_a_time_shows_it_in_your_time_and_each_time_is_a_step_of_its_own(self):
+        phase = {
+            "title": "Deployed",
+            "when": "2026-10-26T04:43:00Z",
+            "items": [{"text": "to staging (branch 19.0-staging)", "at": "2026-10-26T04:43:00Z"}],
+        }
+        info = {"phases": [phase]}
+        fake = Fake("")
+        report.post(fake, 1, "x_customer_report", info)
+        self.assertRegex(
+            fake.value, r"to staging \(branch 19\.0-staging\) &middot; |to staging \(branch 19\.0-staging\) · "
+        )
+        self.assertIn("· 2026-10-26", fake.value)
+        report.post(fake, 1, "x_customer_report", info)
+        self.assertEqual(len(fake.writes), 1, "the same deploy is not written twice")
+        later = {
+            "phases": [dict(phase, items=[{"text": "to staging (branch 19.0-staging)", "at": "2026-10-27T09:00:00Z"}])]
+        }
+        report.post(fake, 1, "x_customer_report", later)
+        self.assertEqual(len(fake.writes), 2, "a deploy at another time is another step")

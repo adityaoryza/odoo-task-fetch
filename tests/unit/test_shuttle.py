@@ -688,3 +688,15 @@ class FetchMissing(Base):
         ctx = {**self.ctx, "hook": "status", "ref-addon": "odoo-task", "ref-id": "15607"}
         fields = {f["label"]: f["value"] for f in shuttle.hook_status(ctx)["cards"][0]["fields"]}
         self.assertIn("press Refresh", fields["Files"])
+
+
+class ReadableText(unittest.TestCase):
+    def test_a_markdown_link_is_read_as_text_with_its_address(self):
+        url = "https://preaucess.net/odoo/all-tasks/70934/sale.order/18347"
+        self.assertEqual(shuttle._readable(f"Context: [{url}]({url}) on order"), f"Context: {url} on order")
+        self.assertEqual(
+            shuttle._readable("see [the order](https://a.example/o/1)"), "see the order (https://a.example/o/1)"
+        )
+        self.assertEqual(
+            shuttle._readable("a [x](javascript:alert(1)) b"), "a [x](javascript:alert(1)) b", "only http and https"
+        )
