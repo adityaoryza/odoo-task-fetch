@@ -90,6 +90,29 @@ class Post(unittest.TestCase):
         self.assertIn("put back", str(caught.exception))
         self.assertEqual(fake.value, "<p>Precious text</p>")
 
+    def test_a_missing_field_names_the_fields_that_look_like_it(self):
+        fake = Fake()
+        fake.fields_get = lambda model, attributes=None: {
+            "x_studio_customer_report": {"type": "html", "string": "Customer report"},
+            "x_rapport_client": {"type": "text", "string": "Rapport"},
+            "x_priority_note": {"type": "char", "string": "Priority report"},
+            "name": {"type": "char", "string": "Name"},
+        }
+        with self.assertRaises(OdooError) as caught:
+            report.plan(fake, 1, "x_customer_report", INFO)
+        message = str(caught.exception)
+        self.assertIn("x_studio_customer_report (Customer report)", message)
+        self.assertIn("x_rapport_client (Rapport)", message)
+        self.assertNotIn("x_priority_note", message, "a field of another type is not offered")
+        self.assertIn("git config shuttle.odoo-task.report-field", message)
+
+    def test_a_missing_field_with_no_look_alike_says_how_to_find_the_name(self):
+        fake = Fake()
+        fake.fields_get = lambda model, attributes=None: {"name": {"type": "char", "string": "Name"}}
+        with self.assertRaises(OdooError) as caught:
+            report.plan(fake, 1, "x_customer_report", INFO)
+        self.assertIn("technical name", str(caught.exception))
+
     def test_only_a_custom_text_or_html_field_is_written(self):
         for field in ("name", "description", "x_Upper", "x_", "x_a b"):
             with self.assertRaises(OdooError):
