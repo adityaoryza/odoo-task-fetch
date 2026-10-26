@@ -208,6 +208,29 @@ def cmd_tasks(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fields(args: argparse.Namespace) -> int:
+    """The fields of a task (read-only): the custom ones (x_...), or those that match every word given."""
+    client = connect(resolve_profile(args.profile))
+    words = [w.lower() for w in args.words]
+    rows = []
+    for name, info in sorted(client.fields_get("project.task", ["string", "type"]).items()):
+        label = str(info.get("string", ""))
+        if words:
+            if all(w in f"{name} {label}".lower() for w in words):
+                rows.append((name, str(info.get("type", "")), label))
+        elif name.startswith("x_"):
+            rows.append((name, str(info.get("type", "")), label))
+    if not rows:
+        say("No field matches." if words else "No custom field (x_...) on a task.")
+        return 0
+    for name, kind, label in rows:
+        print(f"{name:42} {kind:10} {label}")
+    say(
+        "git-shuttle writes only to a custom text or html field (x_...): git config shuttle.odoo-task.report-field NAME"
+    )
+    return 0
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     profile = resolve_profile(args.profile)
     client = OdooClient(profile.url, profile.db, profile.user, secret_for(profile))
@@ -488,6 +511,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tasks.add_argument("--profile", help="saved connection to use")
     tasks.set_defaults(func=cmd_tasks)
+
+    fields = sub.add_parser(
+        "fields", help="list the fields of a task: the custom ones, or those that match the words (read-only)"
+    )
+    fields.add_argument("words", nargs="*", help="words that the name or the label must hold, e.g. customer report")
+    fields.add_argument("--profile")
+    fields.set_defaults(func=cmd_fields)
 
     check = sub.add_parser("check", help="test the connection (read-only)")
     check.add_argument("--profile")

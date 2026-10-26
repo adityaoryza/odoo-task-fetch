@@ -15,7 +15,7 @@ from pathlib import Path
 
 ENV_SECRET = "ODOO_TASK_API_KEY"  # noqa: S105 (the name of a variable, not a secret)
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
-RESERVED = frozenset({"fetch", "check", "login", "profiles", "update", "help", "version", "prompt"})
+RESERVED = frozenset({"fetch", "check", "fields", "login", "profiles", "update", "help", "version", "prompt"})
 
 
 def config_home() -> Path:

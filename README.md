@@ -177,6 +177,7 @@ On success the path of `task.md` is printed on **stdout** and everything else go
 | `login` | Save a connection: URL, database, login, output folder. |
 | `profiles` | List the saved connections; `--show` their settings; `--set KEY=VALUE`, `--extra-field`, `--closed-stages` to change them; `--default NAME`; `--forget-key NAME`. |
 | `check` | Test the connection. Read-only. |
+| `fields` | List the custom fields of a task (`x_...`), or those that match words (`odoo-task fields customer report`): to find the technical name of a field. Read-only. |
 | `update` | Install the newest release (`--check` only looks). |
 
 `fetch` options:

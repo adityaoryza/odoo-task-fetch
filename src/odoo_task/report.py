@@ -69,12 +69,28 @@ def entry_html(info: dict) -> str:
     return head + "<ul>" + "".join(items) + "</ul>"
 
 
+def _candidates(fields: dict) -> str:
+    """The custom text or html fields that look like a report: the way out when the name is not the one of this Odoo."""
+    words = ("report", "customer", "client", "rapport")
+    near = sorted(
+        f"{name} ({info.get('string', '')})"
+        for name, info in fields.items()
+        if FIELD_RE.match(name)
+        and info.get("type") in KINDS
+        and any(w in name.lower() or w in str(info.get("string", "")).lower() for w in words)
+    )
+    if not near:
+        return " No custom text field looks like a report: find its technical name in Odoo (developer mode)."
+    return " Look-alikes: " + ", ".join(near[:3]) + ". Set one: git config shuttle.odoo-task.report-field NAME"
+
+
 def field_kind(client: OdooClient, field: str) -> str:
     if not FIELD_RE.match(field or ""):
         raise OdooError(f"'{field}' is not a custom field (x_...): git-shuttle writes only to one of those.")
-    found = client.fields_get(MODEL, ["string", "type"]).get(field)
+    fields = client.fields_get(MODEL, ["string", "type"])
+    found = fields.get(field)
     if not found:
-        raise OdooError(f"The task has no field '{field}'.")
+        raise OdooError(f"The task has no field '{field}'.{_candidates(fields)}")
     if found.get("type") not in KINDS:
         raise OdooError(f"The field '{field}' is a {found.get('type')} field: only text or html fields are written.")
     return str(found["type"])

@@ -117,6 +117,22 @@ class OtherCommands(CliCase):
             self.assertIn("Odoo 19.0", err)
             self.assertIn("only reads", err)
 
+    def test_fields_lists_the_custom_fields_and_finds_one_by_words(self):
+        with FakeOdoo() as odoo:
+            self.profile(odoo)
+            code, out, err = run("fields")
+            self.assertEqual(code, 0)
+            self.assertIn("x_report", out)
+            self.assertIn("html", out)
+            self.assertNotIn("date_deadline", out, "without words only the custom fields (x_...)")
+            self.assertIn("report-field", err, "it says what to do with the name")
+            code, out, _err = run("fields", "customer", "report")
+            self.assertEqual((code, [line.split()[0] for line in out.splitlines()]), (0, ["x_report"]))
+            code, out, err = run("fields", "nothing like it")
+            self.assertEqual((code, out), (0, ""))
+            self.assertIn("No field matches", err)
+            self.assertNotIn(SECRET, out + err)
+
     def test_check_with_a_wrong_key(self):
         with FakeOdoo() as odoo:
             self.profile(odoo)
