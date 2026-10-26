@@ -1,8 +1,10 @@
 """What git-shuttle adds to the Customer report of a task: the pull request and the commits, for the PM.
 
-It only ever ADDS: the text that is there is read first, kept as it is, and the entry is put after it (an entry
-for a pull request that is already in the field is not added twice). After the write the field is read again,
-and if the old text is not all there, the old value is put back. Only a custom field (x_...) of text or html
+It only ever ADDS, with one exception that is its own: the text that is there is read first and kept as it is. The
+steps of the task are one block of git-shuttle (<div id="git-shuttle-flow">) at the start of an html field, and a
+later run replaces that block and nothing else. A text field, and an entry for a pull request (no steps), are put after
+the old text, and not twice. After the write the field is read again, and if the text that is not the block is not all
+there, the old value is put back. Only a custom field (x_...) of text or html
 type is written, and only when the user turned it on for the repository.
 """
 
@@ -75,13 +77,52 @@ def phases_text(phases: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def phases_html(phases: list[dict]) -> str:
-    """The steps as a table (step, date, details); the inline styles are a bonus, without them it is a plain table."""
+STEPS = (
+    ("Started", "Started"),
+    ("Linked to the task", "Linked"),
+    ("Commits", "Commits"),
+    ("Pushed", "Pushed"),
+    ("Pull request", "Pull request"),
+    ("Merged", "Merged"),
+    ("Released", "Released"),
+    ("Deployed", "Deployed"),
+)
+
+
+def stepper_html(phases: list[dict]) -> str:
+    """Where the task is: a row of cells, dark for a step that is in the trace, light for the others.
+
+    Plain cells with a background: Odoo keeps these (a picture with a data address it does not show).
+    """
+    when = {p.get("title"): _when(p.get("when", ""))[:10] for p in phases}
+    width = f"{100 / len(STEPS):.2f}%"
+    cells = []
+    for title, label in STEPS:
+        on = title in when
+        look = "background:#1f4e5f;color:#fff;" if on else "background:#eef1f3;color:#8a96a0;"
+        day = html.escape(when.get(title, "")) or "&nbsp;"
+        cells.append(
+            f'<td style="{look}width:{width};padding:8px 4px;border:2px solid #fff;text-align:center;">'
+            f'<strong style="font-size:13px;">{"&#10003; " if on else ""}{html.escape(label)}</strong><br/>'
+            f'<span style="font-size:11px;">{day}</span></td>'
+        )
+    return (
+        '<table cellpadding="4" style="border-collapse:separate;width:100%;table-layout:fixed;margin-bottom:10px;">'
+        f"<tbody><tr>{''.join(cells)}</tr></tbody></table>"
+    )
+
+
+def phases_html(phases: list[dict], overall: list[dict] | None = None) -> str:
+    """The steps as a row of cells (all the steps of the trace) and a table of `phases` (step, date, details).
+
+    The inline styles and the picture are a bonus: without them it is still a plain table.
+    """
     esc = html.escape
     cell = "padding:6px 10px;border:1px solid #d9dee3;vertical-align:top;"
     head = "padding:6px 10px;border:1px solid #d9dee3;background:#f1f4f6;color:#44525e;text-align:left;font-weight:600;"
     out = [
-        f"<p><strong>git-shuttle</strong> &middot; the steps of the task &middot; {time.strftime('%Y-%m-%d')}</p>",
+        "<p><strong>git-shuttle</strong> &middot; the flow of the task</p>",
+        stepper_html(overall) if overall else "",
         '<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;">',
         f'<thead><tr><th style="{head}width:16%;">Step</th><th style="{head}width:18%;">Date</th>'
         f'<th style="{head}">Details</th></tr></thead><tbody>',
@@ -100,6 +141,17 @@ def phases_html(phases: list[dict]) -> str:
         )
     out.append("</tbody></table>")
     return "".join(out)
+
+
+FLOW_RE = re.compile(r"<div\b[^>]*\bgit-shuttle-flow\b[^>]*>.*?</div>", re.S)
+
+
+def flow_html(phases: list[dict]) -> str:
+    """The block of git-shuttle at the start of the field: the row of steps and the table of all of them.
+
+    It holds no other <div>, so the first </div> closes it. It is the only text git-shuttle ever replaces.
+    """
+    return f'<div id="git-shuttle-flow" class="git-shuttle-flow">{phases_html(phases, phases)}</div>'
 
 
 def entry_text(info: dict) -> str:
@@ -181,10 +233,26 @@ def plan(client: OdooClient, task_id: int, field: str, info: dict, allow_plain: 
     if not rows:
         raise OdooError(f"Task {task_id} was not found (or you cannot read it).")
     old = rows[0].get(field) or ""
+    block = FLOW_RE.search(str(old))
+    if info.get("phases") is not None and kind == "html":
+        # the flow of the task is one block at the start of the field: it is the only text that is replaced
+        entry = flow_html(info["phases"])
+        rest = FLOW_RE.sub("", str(old), count=1)
+        preview, skip = phases_text(info["phases"]), bool(block) and _plain(block.group(0)) == _plain(entry)
+        return {
+            "kind": kind,
+            "old": old,
+            "rest": rest,
+            "entry": entry,
+            "skip": skip,
+            "new": entry + rest,
+            "preview": preview,
+            "count": sum(len(p["items"]) for p in info["phases"]),
+        }
     if info.get("phases") is not None:
-        # the steps of the task, each once: only what is not in the field yet is written
+        # a plain text field: the steps of the task, each once, only what is not in the field yet is written
         fresh = fresh_phases(info, old)
-        entry = phases_html(fresh) if kind == "html" else phases_text(fresh)
+        entry = phases_text(fresh)
         preview, skip = phases_text(fresh), not fresh
         count = sum(len(p["items"]) for p in fresh)
     else:
@@ -211,9 +279,13 @@ def post(client: OdooClient, task_id: int, field: str, info: dict, allow_plain: 
         return f"Nothing was written: the Customer report already has {what} ({field})."
     client.append_custom_field(MODEL, task_id, field, done["new"], allow_plain)
     after = (client.read(MODEL, [task_id], [field]) or [{}])[0].get(field) or ""
-    if done["old"] and _plain(done["old"]) not in _plain(after):
+    kept = done.get("rest", done["old"])  # all the text that is not the block of git-shuttle
+    if kept and _plain(kept) not in _plain(after):
         client.append_custom_field(MODEL, task_id, field, str(done["old"]), allow_plain)
         raise OdooError(f"Odoo changed the old text of {field}: it was put back as it was; nothing was added.")
+    if info.get("phases") is not None and done["kind"] == "html":
+        steps = ", ".join(str(p.get("title", "")) for p in info["phases"])
+        return f"The flow of the task is at the start of {field} of task {task_id}: {steps}. The other text is kept."
     if info.get("phases") is not None:
         steps = ", ".join(str(p.get("title", "")) for p in fresh_phases(info, done["old"]))
         return f"Added to {field} of task {task_id}: {steps}. The text that was there is kept."

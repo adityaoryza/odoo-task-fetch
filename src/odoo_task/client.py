@@ -152,7 +152,7 @@ class OdooClient:
     ) -> None:
         """The one write that odoo-task can make, for git-shuttle: one custom field (x_...) of one task.
 
-        `execute` stays read-only. The caller has read the old value and keeps it: it only ever adds to what is there.
+        `execute` stays read-only. The caller has read the old value and keeps all of it, except its own block of steps.
         A field of a module of your own (report_details, without x_) is written only when the user named it on purpose
         (`allow_plain`), and never one of the standard fields that hold the task itself.
         """

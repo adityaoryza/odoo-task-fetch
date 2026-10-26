@@ -213,14 +213,31 @@ PHASES = [
 ]
 
 
+class Stepper(unittest.TestCase):
+    def test_every_step_has_a_cell_and_only_the_steps_of_the_trace_are_dark(self):
+        row = report.stepper_html(PHASES)
+        self.assertEqual(row.count("<td"), len(report.STEPS))
+        self.assertEqual(row.count("background:#1f4e5f"), len(PHASES))
+        self.assertIn("Deployed", row)
+        for bad in ("<img", "<svg", "<script"):
+            self.assertNotIn(bad, row)
+
+    def test_the_entry_has_the_row_of_all_steps_and_the_table_of_the_new_ones(self):
+        entry = report.phases_html(PHASES[-1:], PHASES)
+        self.assertEqual(entry.count("background:#1f4e5f"), len(PHASES))
+        self.assertIn(">Pull request</td>", entry)
+        self.assertNotIn(">Started</td>", entry)
+
+
 class Steps(unittest.TestCase):
     def info(self, phases=PHASES):
         return {"branch": "19.0-feature/x", "pr": {}, "commits": [], "phases": [dict(p) for p in phases]}
 
-    def test_every_step_is_written_with_its_title_and_its_links_after_the_old_text(self):
+    def test_every_step_is_written_in_one_block_at_the_start_and_the_old_text_stays_after_it(self):
         fake = Fake("<p>PM text</p>")
         report.post(fake, 1, "x_customer_report", self.info())
-        self.assertTrue(fake.value.startswith("<p>PM text</p>"))
+        self.assertTrue(fake.value.startswith('<div id="git-shuttle-flow"'))
+        self.assertTrue(fake.value.endswith("<p>PM text</p>"))
         for text in (
             "<table",
             ">Started</td>",
@@ -229,47 +246,51 @@ class Steps(unittest.TestCase):
             'href="https://github.example/a/b/commit/0578368a"',
         ):
             self.assertIn(text, fake.value)
-        self.assertLess(fake.value.index("Started"), fake.value.index("Commits"))
-        self.assertLess(fake.value.index("Commits"), fake.value.index("Pull request"))
+        self.assertLess(fake.value.index(">Started</td>"), fake.value.index(">Commits</td>"))
+        self.assertLess(fake.value.index(">Commits</td>"), fake.value.index(">Pull request</td>"))
 
-    def test_a_step_that_is_in_the_field_is_not_written_again_and_a_new_one_is_added(self):
-        fake = Fake("")
+    def test_the_same_steps_are_not_written_again_and_a_new_step_replaces_only_the_block(self):
+        fake = Fake("<p>PM text</p>")
         report.post(fake, 1, "x_customer_report", self.info())
         again = report.post(fake, 1, "x_customer_report", self.info())
         self.assertEqual(len(fake.writes), 1)
         self.assertIn("every step", again)
-        more = self.info(
-            PHASES
-            + [
-                {
-                    "title": "Merged",
-                    "when": "2026-10-26T04:38:00Z",
-                    "items": [
-                        {
-                            "text": "merged into 19.0-staging",
-                            "url": "https://github.example/a/b/commit/3e5f6695",
-                            "ref": "3e5f6695",
-                        }
-                    ],
-                }
-            ]
-        )
-        report.post(fake, 1, "x_customer_report", more)
+        merged = {
+            "title": "Merged",
+            "when": "2026-10-26T04:38:00Z",
+            "items": [{"text": "merged into 19.0-staging", "url": "https://github.example/a/b/commit/3e5f6695"}],
+        }
+        report.post(fake, 1, "x_customer_report", self.info(PHASES + [merged]))
         self.assertEqual(len(fake.writes), 2)
-        written = fake.value[len(fake.writes[0]) :]
-        self.assertIn("Merged", written)
-        self.assertNotIn("Commits", written, "only the new step is added")
+        self.assertEqual(fake.value.count('id="git-shuttle-flow"'), 1, "one block, not one more")
+        self.assertIn(">Merged</td>", fake.value)
+        self.assertIn(">Commits</td>", fake.value, "the block is the whole flow, not only the new step")
+        self.assertTrue(fake.value.endswith("<p>PM text</p>"))
+        self.assertEqual(fake.value.count("PM text"), 1)
 
-    def test_a_new_commit_alone_is_added_to_a_report_that_has_the_others(self):
-        fake = Fake("")
+    def test_a_new_commit_changes_the_block_and_nothing_else(self):
+        fake = Fake("<p>PM text</p>")
         report.post(fake, 1, "x_customer_report", self.info())
         later = [
             dict(PHASES[1], items=PHASES[1]["items"] + [{"text": "abcdef12 [FIX] sale: round", "ref": "abcdef12"}])
         ]
         report.post(fake, 1, "x_customer_report", self.info(later))
-        added = fake.value[len(fake.writes[0]) :]
-        self.assertIn("abcdef12", added)
-        self.assertNotIn("0578368a", added)
+        self.assertEqual(fake.value.count('id="git-shuttle-flow"'), 1)
+        self.assertIn("abcdef12", fake.value)
+        self.assertTrue(fake.value.endswith("<p>PM text</p>"))
+
+    def test_an_old_entry_without_the_block_stays_where_it_is_and_the_block_goes_before_it(self):
+        old = "<p><strong>git-shuttle</strong> old entry</p><ul><li>0578368a</li></ul>"
+        fake = Fake(old)
+        report.post(fake, 1, "x_customer_report", self.info())
+        self.assertTrue(fake.value.startswith('<div id="git-shuttle-flow"'))
+        self.assertTrue(fake.value.endswith(old))
+
+    def test_if_odoo_changes_the_text_around_the_block_it_is_put_back_as_it_was(self):
+        fake = Fake("<p>PM text</p>", keeps=False)
+        with self.assertRaises(OdooError):
+            report.post(fake, 1, "x_customer_report", self.info())
+        self.assertEqual(fake.value, "<p>PM text</p>")
 
     def test_the_preview_is_the_plain_text_of_what_is_new(self):
         done = report.plan(Fake(""), 1, "x_customer_report", self.info())
